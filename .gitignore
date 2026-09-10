@@ -1,0 +1,17 @@
+.streamlit/secrets.toml
+__pycache__/
+*.pyc
+temp_docx/
+extracted_text.txt
+chengchu_products.txt
+shot1.png
+python-manager-*.msix
+
+# 考试保密材料与个人信息，不入库
+*.pdf
+*.docx
+截图.md
+截图.png
+岗位JD.txt
+面试注意事项.txt
+题目08技术方案.md
