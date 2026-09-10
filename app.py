@@ -29,70 +29,85 @@ init()
 # ---------------------------------------------------------------- 侧边栏
 
 with st.sidebar:
-    st.subheader("产品目录")
-    st.caption("Agent 的唯一事实来源，共 6 个 SKU")
+    st.markdown("#### 澄初个人护理")
+    st.caption("在线咨询")
 
-    for p in kb.PRODUCTS.values():
-        badge = ""
-        if p.get("requires_screening"):
-            badge = " ⚠️"
-        if p.get("travel_only"):
-            badge = " ✈️"
-        with st.expander(f"{p['sku']} {p['name']}　{p['price']} 元{badge}"):
-            st.write(f"**规格**　{p['spec']}")
-            st.write(f"**特点**　{p['features']}")
-            st.write(f"**适用**　{p['fit']}")
-            st.write(f"**限制**　{p['limits']}")
-
-    st.divider()
-    st.subheader("可讨论组合")
-    for c in kb.COMBOS:
-        detail = " + ".join(str(kb.PRODUCTS[s]["price"]) for s in c["members"])
-        st.write(f"**{' + '.join(c['members'])}**　{c['price']} 元")
-        st.caption(f"{detail} = {c['price']}，无折扣　|　{c['scenario']}")
-
-    st.divider()
-    st.subheader("手册未覆盖")
-    st.caption("命中即转交门店/系统确认，不由模型作答")
-    st.write("　".join(kb.UNCOVERED_TOPICS))
-
-    st.divider()
-    if st.session_state.profile:
-        st.subheader("已识别需求")
-        st.json(st.session_state.profile)
-
-    if st.button("清空对话", use_container_width=True):
+    if st.button("重新开始", use_container_width=True):
         st.session_state.history = []
         st.session_state.profile = {}
         st.session_state.trace = []
         st.rerun()
 
+    st.divider()
+
+    # 顾客视角下不应看到内部规则与完整目录，默认收起。
+    # 保留是为了现场验收时可即时核对 Agent 输出是否与手册一致。
+    with st.expander("验收对照", expanded=False):
+        st.caption("仅供现场核对判断来源，实际部署时移除")
+
+        st.checkbox(
+            "在回复下方显示判定依据",
+            key="show_trace",
+            help="勾选后，命中规则的回复会附上触发词与所依据的手册条款",
+        )
+
+        st.markdown("**产品目录**　Agent 的唯一事实来源")
+        for p in kb.PRODUCTS.values():
+            badge = ""
+            if p.get("requires_screening"):
+                badge = "　⚠️ 需前置筛查"
+            if p.get("travel_only"):
+                badge = "　✈️ 限旅行需求"
+            st.caption(
+                f"{p['sku']}　{p['name']}　{p['price']} 元{badge}\n\n"
+                f"{p['spec']}｜{p['features']}\n\n"
+                f"适用：{p['fit']}\n\n"
+                f"限制：{p['limits']}"
+            )
+
+        st.markdown("**组合价**")
+        for c in kb.COMBOS:
+            detail = " + ".join(str(kb.PRODUCTS[s]["price"]) for s in c["members"])
+            st.caption(
+                f"{' + '.join(c['members'])}　{c['price']} 元"
+                f"（{detail} = {c['price']}，无折扣）"
+            )
+
+        st.markdown("**手册未覆盖话题**")
+        st.caption(
+            "　".join(kb.UNCOVERED_TOPICS)
+            + "\n\n命中即转交门店或系统确认，不由模型作答"
+        )
+
+        if st.session_state.profile:
+            st.markdown("**本次会话已识别需求**")
+            st.json(st.session_state.profile)
+
 
 # ---------------------------------------------------------------- 主区
 
-st.title("澄初个人护理 · AI 金牌导购")
-st.caption(
-    "产品事实与价格来自品牌手册确定性查表；安全与政策边界由规则层前置拦截，不交给大模型自由判断。"
-)
+st.title("澄初个人护理")
+st.caption("在线导购　·　告诉我您的情况，我帮您看看适合什么")
 
 if not st.session_state.history:
-    st.info(
-        "试试这些问法：　“想买洗面奶，皮肤有点干”　·　"
-        "“我想改善皮肤粗糙”　·　“有赠品吗？”　·　“用了之后有点刺痛”"
+    st.caption(
+        "　您可以这样问：「想买洗面奶，皮肤有点干」"
+        "　「我对香味比较敏感」　「想改善皮肤粗糙」"
     )
 
 # 渲染历史
 for i, m in enumerate(st.session_state.history):
     with st.chat_message(m["role"], avatar="🧴" if m["role"] == "assistant" else None):
         st.markdown(m["content"])
-        # 命中规则的回复附判定依据
-        hit = next(
-            (t for t in st.session_state.trace if t["turn"] == i), None
-        )
-        if hit:
-            with st.expander(f"判定依据　·　{hit['label']}"):
-                st.write(f"**触发词**　{'、'.join(hit['matched'])}")
-                st.write(f"**依据规则**　{hit['rule']}")
+        # 判定依据属后台信息，仅在验收模式下显示
+        if st.session_state.get("show_trace"):
+            hit = next(
+                (t for t in st.session_state.trace if t["turn"] == i), None
+            )
+            if hit:
+                with st.expander(f"判定依据　·　{hit['label']}"):
+                    st.write(f"**触发词**　{'、'.join(hit['matched'])}")
+                    st.write(f"**依据规则**　{hit['rule']}")
 
 
 TYPE_LABEL = {
@@ -136,9 +151,10 @@ if user_input := st.chat_input("请输入您的需求…"):
         )
         with st.chat_message("assistant", avatar="🧴"):
             st.markdown(blocked["reply"])
-            with st.expander(f"判定依据　·　{TYPE_LABEL[blocked['type']]}"):
-                st.write(f"**触发词**　{'、'.join(blocked['matched'])}")
-                st.write(f"**依据规则**　{blocked['rule']}")
+            if st.session_state.get("show_trace"):
+                with st.expander(f"判定依据　·　{TYPE_LABEL[blocked['type']]}"):
+                    st.write(f"**触发词**　{'、'.join(blocked['matched'])}")
+                    st.write(f"**依据规则**　{blocked['rule']}")
         st.stop()
 
     # --- 第二层：抽取需求 + 模型生成 ---
@@ -175,7 +191,8 @@ if user_input := st.chat_input("请输入您的需求…"):
             notes.append(f"命中禁用表达：{'、'.join(violations)}，建议人工复核")
 
         st.markdown(answer)
-        for n in notes:
-            st.caption(f"⚙️ 输出校验　{n}")
+        if st.session_state.get("show_trace"):
+            for n in notes:
+                st.caption(f"⚙️ 输出校验　{n}")
 
     push("assistant", answer)
